@@ -9,6 +9,7 @@
 #include "exception.hpp"
 
 #include <map>
+using namespace std;
 
 namespace sjtu {
 
@@ -22,9 +23,11 @@ namespace sjtu {
     private:
    
 
-     static const int M = 4096/(sizeof(Key)+sizeof(Value))+1;
-    static  const int L = M;
-    static  const int MAX_BLOCK_SIZE=M;
+     //static const int M = 4096/(sizeof(Key)+sizeof(Value))+1;
+     //static  const int L = M;
+     static const int M = 5;
+     static  const int L = 5;
+     static  const int MAX_BLOCK_SIZE=M;
      static const int MIN_BLOCK_SIZE=M/2;
      std::fstream op;
      int info_offset = 0;
@@ -41,6 +44,8 @@ namespace sjtu {
           
           int tail;
 
+          int eof ;
+
      
 
           basicInfo(){
@@ -48,6 +53,7 @@ namespace sjtu {
               root=0;
               head=0;
               tail=0;
+              eof=0;
             
           }
        };
@@ -72,8 +78,8 @@ namespace sjtu {
        struct odnode{
            int offset;
            int parent;
-           int child[M+1];
-           int key[M+1];
+           int child[M+5];
+           int key[M+5];
            bool node_type;   ///  to check if the child of this node are leafs;
            int cnt;
            odnode(){
@@ -102,26 +108,27 @@ namespace sjtu {
       inline void write_leafnode(leafnode&p,int offset){
           if (op.fail())  op.close();
           if (!op.is_open())   op.open(file_name,std::ios::in|std::ios::out|std::ios::binary|std::ios::trunc);
-          op.seekg(offset);
+          op.seekp(offset);
           op.write(reinterpret_cast<char *> (&p),sizeof(leafnode));
-          op.flush();
+        //  op.flush();
       }
 
       inline void write_odnode(odnode&p,int offset){
           if (op.fail())  op.close();
           if (!op.is_open()) op.open(file_name,std::ios::in|std::ios::out|std::ios::binary|std::ios::trunc);
-          op.seekg(offset);
+          op.seekp(offset);
           op.write(reinterpret_cast<char *>(&p),sizeof(odnode));
-          op.flush();
+        //  op.flush();
       }
 
       inline void write_basic_information(basicInfo& b,int offset){
+
            if(op.fail()) op.close();
            if(!op.is_open()) op.open(file_name,std::ios::in|std::ios::out|std::ios::binary|std::ios::trunc);
 
-           op.seekg(offset);
+           op.seekp(offset);
            op.write(reinterpret_cast<char*>(&b) ,sizeof(basicInfo));
-           op.flush();
+         //  op.flush();
       }
 
       
@@ -136,8 +143,10 @@ namespace sjtu {
 
       
       int find_leaf(int offset ,Key k){
+
+          cout<<"call function find !<<"<<endl;
              odnode tmp;
-             op.seekp(offset);
+             op.seekg(offset);
              op.read(reinterpret_cast<char *> (&tmp),sizeof(odnode));
             if(tmp.node_type == 1){ 
 
@@ -163,7 +172,8 @@ namespace sjtu {
 /*  this function is used to insert a <key,value> pair into a certain leaf
 */
       pair<iterator ,OperationResult> insert_leaf(leafnode &leaf,const Key &key,const Value &val){
-           
+           cout<<"call:insert_leaf"<<endl; 
+           cout<<"leafofffffff"<<leaf.offset<<endl;
         int i;
         for( i=0;i<leaf.cnt;++i)
           if(key<leaf.data[i].first) break;
@@ -179,11 +189,16 @@ namespace sjtu {
          leaf.data[i].second = val;
 
     ++leaf.cnt;
+
     ++BPTInfo.size;
     iterator ans_iter(leaf.offset,i,this);
     write_basic_information(BPTInfo,info_offset);
+
+    cout<<"now this leaf 's cnt is"<<leaf.cnt<<"offset is"<<leaf.offset<<endl;
+
     if(leaf.cnt < L) write_leafnode(leaf,leaf.offset);
-    else split_leaf(leaf,ans_iter,key);
+
+    else {cout<<"!!!!!!!!!"<<endl;split_leaf(leaf,ans_iter,key);}
 
     return pair<iterator,OperationResult> (ans_iter,Success);
 
@@ -191,6 +206,9 @@ namespace sjtu {
       }
 
       void insert_node (odnode & node, const Key key ,const int insertnode){
+          cout<<"call insert_node"<<endl;
+          cout<<"node.cnt"<<node.cnt<<endl;
+          cout<<"node.offset"<<node.offset<<endl;
          int i=0;
          for(i=0;i<node.cnt;++i)
            if (key < node.key[i]) break;
@@ -212,16 +230,20 @@ namespace sjtu {
     
 
     void split_node(odnode &node){
+        cout<<"call split_node"<<endl;
         odnode newnode;
         leafnode leaf;
         
         newnode.cnt = node.cnt -(node.cnt/2);
         node.cnt/=2;
-        
+       
+
         newnode.parent = node.parent;
-        op.seekp(0,std::ios::end);
-        newnode.offset=op.tellp();
-        newnode.node_type = node.node_type;
+
+       
+        newnode.offset=BPTInfo.eof;
+         BPTInfo.eof += sizeof(odnode);
+         newnode.node_type = node.node_type;
         for(int i=0;i<newnode.cnt;++i)
         { newnode.child[i] = node.child[i+node.cnt];
           newnode.key[i] = node.key[i+node.cnt];
@@ -244,12 +266,16 @@ namespace sjtu {
              }
         }
 //////  create a new root;
+cout<<"node.offset(if = root)"<<node.offset<<endl;
         if(node.offset == BPTInfo.root){
              odnode newroot;
              newroot.parent = 0;
              newroot.node_type = 0;
-             op.seekp(0,std::ios::end);
-             newroot .offset = op.tellp(); 
+            
+
+             newroot .offset = BPTInfo.eof; 
+
+              BPTInfo.eof += sizeof(odnode);
              newnode.cnt=2;
              newroot.key[0] = node.key[0];
              newroot.child[0]=node.offset;
@@ -277,12 +303,14 @@ namespace sjtu {
     }
 
     void split_leaf(leafnode&leaf,iterator &it, const Key &key){
+        cout<<"call split leaf"<<endl;
         leafnode  newleaf;
         newleaf.cnt = leaf.cnt - leaf.cnt/2;
         leaf.cnt /= 2;
-        op.seekp(std::ios::end);
+       
+        newleaf.offset = BPTInfo.eof;
+        BPTInfo.eof += sizeof(leafnode);
 
-        newleaf.offset = op.tellp();
         newleaf.parent = leaf.parent;
         for(int i = 0;i<newleaf.cnt;++i){
             newleaf.data[i].first = leaf.data[i+leaf.cnt].first;
@@ -679,19 +707,24 @@ namespace sjtu {
         // Default Constructor and Copy Constructor
 
         BTree() {
-            op.open(file_name,std::ios::in|std::ios::out|std::ios::binary|std::ios::trunc);
-            if(!op)  throw "open unsuccsessfully";
-            BPTInfo.size = 0;
-            odnode root;
-            leafnode leaf;
-            root.offset=std::ios::end;
-            root.node_type=1;
-            root.parent=0;
-            root.cnt=0;
-            root.child[0]=leaf.offset;
-            leaf.parent = root.offset;
-            leaf.next=leaf.prev=0;
-            leaf.cnt=0;
+
+            op.open ("asdasdasd",std::ios::in|std::ios::out|std::ios::binary|std::ios::trunc);
+            if(!op)  cout<<"open unsuccessfully !"<<endl;
+            else {cout<<"OPEN FILE-----"<<endl;}   
+                BPTInfo.size = 0;
+				BPTInfo.eof = sizeof(basicInfo);
+				odnode root;
+				leafnode leaf;
+				BPTInfo.root = root.offset =  BPTInfo.eof;
+				BPTInfo.eof += sizeof(odnode);
+				BPTInfo.head =  BPTInfo.tail = leaf.offset =  BPTInfo.eof;
+				BPTInfo.eof += sizeof(leafnode);
+				root.parent = 0; root.cnt = 1; root.node_type = 1;
+				root.child[0] = leaf.offset;
+				leaf.parent = root.offset;
+				leaf.next = leaf.prev = 0;
+				leaf.cnt = 0;
+
             write_leafnode(leaf,leaf.offset);
             write_odnode(root,root.offset);
             write_basic_information(BPTInfo,info_offset);
@@ -722,18 +755,21 @@ namespace sjtu {
         // element, the second of the pair is Success if it is successfully inserted
 
         pair<iterator, OperationResult> insert(const Key& key, const Value& value) {
+         
             int leaf_location = find_leaf(BPTInfo.root ,key);
+            cout<<"leaf_location is"<<leaf_location<<endl;
             leafnode leaf;
             pair<iterator,OperationResult>  ans;
-            if (BPTInfo.size == 0|| leaf_location == 0){
+            if (BPTInfo.size == 0|| leaf_location==0){
+           
                    op.seekg(BPTInfo.head);
                    op.read(reinterpret_cast<char*> (&leaf),sizeof(leafnode));
                    pair <iterator,OperationResult> ans = insert_leaf(leaf,key,value);
-                   if (ans.second !=Success)  return ans ;
+                   if (ans.second !=Success)  {return ans ;}
                    int offset = leaf.parent;
                    odnode node;
                    while(offset!=0){
-                        op.seekg(BPTInfo.head);
+                        op.seekg(offset);
                         op.read(reinterpret_cast<char*>(&leaf),sizeof(leafnode));
                         node.key[0]=key;
                         write_odnode(node,offset);
@@ -817,14 +853,7 @@ namespace sjtu {
         // Return the value refer to the Key(key)
 
         Value at(const Key& key){
-             iterator tmp = find(key);
-             if(tmp == end())  throw invalid_iterator();
-             else{
-                 leafnode leaf;
-                 op.seekg(leaf.offset);
-                 op.read(reinterpret_cast<char*> (&leaf),sizeof(leafnode));
-                 return leaf.data[tmp.place].second;
-             } 
+          return find(key);
 
              
         }
@@ -855,19 +884,21 @@ namespace sjtu {
 
          */
 
-        iterator find(const Key& key) {
+        Value find(const Key& key) {
             int leaf_location = find_leaf(key,BPTInfo.root);
-            if(leaf_location == 0)  return end();
-            else{
+            
+           
               leafnode leaf;
               op.seekg(leaf_location);
               op.read(reinterpret_cast<char*> (&leaf),sizeof(leafnode));
               for(int i=0;i<leaf.cnt;++i)
-                if(leaf.data[i].first == key )  return iterator (leaf_location,i,this);
+                if(leaf.data[i].first == key )  return leaf.data[i].second;
 
-            }
-return end();
+        
+
         }
+
+        int root_off(){cout<<"present root's offset is"<<BPTInfo.root<<endl;}
 
         
             /*  const_iterator find(const Key& key)  {
