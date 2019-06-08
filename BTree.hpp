@@ -35,7 +35,7 @@ namespace sjtu {
 
        struct basicInfo{
          
-          int size;
+          int size;//
 
           int root;
 
