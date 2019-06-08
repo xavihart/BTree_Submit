@@ -25,8 +25,8 @@ namespace sjtu {
 
      //static const int M = 4096/(sizeof(Key)+sizeof(Value))+1;
      //static  const int L = M;
-     static const int M = 5;
-     static  const int L = 5;
+     static const int M = 4096/(sizeof(Key)+sizeof(Value));
+     static  const int L = M;
      static  const int MAX_BLOCK_SIZE=M;
      static const int MIN_BLOCK_SIZE=M/2;
      std::fstream op;
